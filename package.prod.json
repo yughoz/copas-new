@@ -1,0 +1,21 @@
+{
+  "name": "copas-prod",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "build": "next build",
+    "install-deps": "npm install --production"
+  },
+  "dependencies": {
+    "next": "^16.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "lucide-react": "^0.394.0",
+    "next-themes": "^0.3.0"
+  }
+}

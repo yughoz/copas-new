@@ -74,7 +74,7 @@ export default function SharedCopasPage() {
     setToasts(prev => prev.filter(toast => toast.id !== id))
   }
 
-  const addData = () => {
+  const addData = async () => {
     const validation = validateInput(text)
     if (!validation.isValid) {
       showNewToast(validation.error!, 'error')
@@ -83,11 +83,16 @@ export default function SharedCopasPage() {
 
     const newArrCopy = [text, ...arrCopy].slice(0, 3)
     setArrCopy(newArrCopy)
-    addDataCopas(sortId, newArrCopy)
-    setText('')
 
-    showNewToast('Text added successfully', 'success')
-    textareaRef.current?.focus()
+    try {
+      await addDataCopas(sortId, newArrCopy)
+      setText('')
+      showNewToast('Text added successfully', 'success')
+      textareaRef.current?.focus()
+    } catch (error) {
+      showNewToast('Failed to save data', 'error')
+      setArrCopy(arrCopy) // Revert on error
+    }
   }
 
   const copyItemToClipboard = async (item: string) => {
@@ -99,11 +104,17 @@ export default function SharedCopasPage() {
     }
   }
 
-  const removeData = (index: number) => {
+  const removeData = async (index: number) => {
     const newArrCopy = arrCopy.filter((_, i) => i !== index)
     setArrCopy(newArrCopy)
-    addDataCopas(sortId, newArrCopy)
-    showNewToast('Item removed', 'success')
+
+    try {
+      await addDataCopas(sortId, newArrCopy)
+      showNewToast('Item removed', 'success')
+    } catch (error) {
+      showNewToast('Failed to remove item', 'error')
+      setArrCopy(arrCopy) // Revert on error
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

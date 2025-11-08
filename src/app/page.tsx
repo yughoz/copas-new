@@ -2,16 +2,22 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Copy, Plus, Trash2, Moon, Sun } from 'lucide-react'
+import { Copy, Plus, Trash2, Moon, Sun, RefreshCw } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { addDataCopas, fetchCopas } from '@/lib/store'
+import { addDataCopas, fetchCopas, generateNextIdFromSupabase } from '@/lib/store'
 import { createToast, copyToClipboard, validateInput, pasteFromClipboard, isClipboardAvailable } from '@/lib/utils'
-import { generateNextId } from '@/lib/id-generator'
+import { getVersion } from '@/lib/version'
 
 interface Toast {
   id: string
   message: string
   type: 'success' | 'error'
+}
+
+interface Version {
+  version: string
+  buildDate: string
+  changelog: string
 }
 
 export default function Home() {
@@ -22,6 +28,7 @@ export default function Home() {
   const [sortId, setSortId] = useState<string>('')
   const [shareUrl, setShareUrl] = useState('')
   const [clipboardAvailable, setClipboardAvailable] = useState(false)
+  const [version, setVersion] = useState<Version | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const router = useRouter()
   const { theme, setTheme } = useTheme()
@@ -32,20 +39,39 @@ export default function Home() {
     // Check clipboard availability
     setClipboardAvailable(isClipboardAvailable())
 
-    // Generate next auto-increment ID
-    const newId = generateNextId()
-    setSortId(newId)
-
-    if (typeof window !== 'undefined') {
-      setShareUrl(`${window.location.origin}/${newId}`)
-
-      // Load existing data if any
-      fetchCopas(newId).then(data => {
-        if (data) {
-          setArrCopy(data)
-        }
-      })
+    // Load version information
+    const loadVersion = async () => {
+      try {
+        const versionData = await getVersion()
+        setVersion(versionData)
+      } catch (error) {
+        console.error('Failed to load version:', error)
+      }
     }
+
+    // Generate next auto-increment ID from Supabase
+    const initializeId = async () => {
+      try {
+        const newId = await generateNextIdFromSupabase()
+        setSortId(newId)
+
+        if (typeof window !== 'undefined') {
+          setShareUrl(`${window.location.origin}/${newId}`)
+
+          // Load existing data if any
+          const data = await fetchCopas(newId)
+          if (data) {
+            setArrCopy(data)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize ID:', error)
+        showNewToast('Failed to create new session', 'error')
+      }
+    }
+
+    loadVersion()
+    initializeId()
   }, [])
 
   const showNewToast = (message: string, type: 'success' | 'error') => {
@@ -61,7 +87,7 @@ export default function Home() {
     setToasts(prev => prev.filter(toast => toast.id !== id))
   }
 
-  const addData = () => {
+  const addData = async () => {
     const validation = validateInput(text)
     if (!validation.isValid) {
       showNewToast(validation.error!, 'error')
@@ -70,11 +96,16 @@ export default function Home() {
 
     const newArrCopy = [text, ...arrCopy].slice(0, 3)
     setArrCopy(newArrCopy)
-    addDataCopas(sortId, newArrCopy)
-    setText('')
 
-    showNewToast('Text added successfully', 'success')
-    textareaRef.current?.focus()
+    try {
+      await addDataCopas(sortId, newArrCopy)
+      setText('')
+      showNewToast('Text added successfully', 'success')
+      textareaRef.current?.focus()
+    } catch (error) {
+      showNewToast('Failed to save data', 'error')
+      setArrCopy(arrCopy) // Revert on error
+    }
   }
 
   const pasteAction = async () => {
@@ -101,11 +132,17 @@ export default function Home() {
     }
   }
 
-  const removeData = (index: number) => {
+  const removeData = async (index: number) => {
     const newArrCopy = arrCopy.filter((_, i) => i !== index)
     setArrCopy(newArrCopy)
-    addDataCopas(sortId, newArrCopy)
-    showNewToast('Item removed', 'success')
+
+    try {
+      await addDataCopas(sortId, newArrCopy)
+      showNewToast('Item removed', 'success')
+    } catch (error) {
+      showNewToast('Failed to remove item', 'error')
+      setArrCopy(arrCopy) // Revert on error
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -121,6 +158,25 @@ export default function Home() {
       showNewToast('Share link copied to clipboard', 'success')
     } else {
       showNewToast(result.error!, 'error')
+    }
+  }
+
+  const createNewId = async () => {
+    try {
+      const newId = await generateNextIdFromSupabase()
+      setSortId(newId)
+      setArrCopy([]) // Clear existing data
+      setText('') // Clear input
+
+      if (typeof window !== 'undefined') {
+        setShareUrl(`${window.location.origin}/${newId}`)
+      }
+
+      showNewToast('New session created successfully', 'success')
+      textareaRef.current?.focus()
+    } catch (error) {
+      console.error('Failed to create new ID:', error)
+      showNewToast('Failed to create new session', 'error')
     }
   }
 
@@ -179,6 +235,14 @@ export default function Home() {
               <code className="text-lg font-bold text-blue-600 dark:text-blue-400 font-mono">
                 {sortId}
               </code>
+              <button
+                onClick={createNewId}
+                className="p-1 hover:bg-blue-200 dark:hover:bg-blue-800/50 rounded-md transition-colors"
+                aria-label="Create new ID"
+                title="Create new session"
+              >
+                <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              </button>
             </div>
           )}
         </div>
@@ -285,6 +349,22 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Footer with Version */}
+        <div className="mt-16 pt-8 border-t border-zinc-200 dark:border-zinc-700">
+          <div className="text-center">
+            {version && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+                <span className="font-medium">v{version.version}</span>
+                <span className="text-zinc-400">•</span>
+                <span>{version.buildDate}</span>
+              </div>
+            )}
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Made with ❤️ for easy clipboard sharing
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )

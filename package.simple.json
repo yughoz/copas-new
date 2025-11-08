@@ -1,0 +1,10 @@
+{
+  "name": "copas-simple",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "NODE_ENV=production node_modules/.bin/next start -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "stop": "pkill -f 'next start'"
+  }
+}
