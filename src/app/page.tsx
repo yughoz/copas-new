@@ -101,7 +101,11 @@ export default function Home() {
       await addDataCopas(sortId, newArrCopy)
       setText('')
       showNewToast('Text added successfully', 'success')
-      textareaRef.current?.focus()
+
+      // Redirect to the share link URL after adding item
+      if (window.location.pathname === '/' && sortId) {
+        router.push(`/${sortId}`)
+      }
     } catch (error) {
       showNewToast('Failed to save data', 'error')
       setArrCopy(arrCopy) // Revert on error
