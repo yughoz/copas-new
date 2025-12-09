@@ -4,7 +4,9 @@
       "Bash(npm run dev:*)",
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(docker build:*)"
     ],
     "deny": [],
     "ask": []

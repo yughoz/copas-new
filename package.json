@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3010",
-    "build": "next build",
-    "start": "next start -p 3011",
-    "start:3000": "next start -p 3000",
-    "start:3010": "next start -p 3010",
-    "start:8080": "next start -p 8080",
-    "lint": "eslint",
-    "version": "node -e \"const fs=require('fs');const v=require('./src/lib/version.json');const date=new Date().toISOString().split('T')[0];console.log('Current version:', v.version);process.argv[2]&&(v.version=process.argv[2],v.buildDate=date,fs.writeFileSync('./src/lib/version.json', JSON.stringify(v, null, 2)),console.log('Updated to:', v.version));\"",
-    "version:patch": "npm run version patch",
-    "version:minor": "npm run version minor",
-    "version:major": "npm run version major"
+    "dev": "bun next dev -p 3010",
+    "build": "bun next build",
+    "start": "bun next start",
+    "start:3000": "bun next start -p 3000",
+    "start:3010": "bun next start -p 3010",
+    "start:8080": "bun next start -p 8080",
+    "lint": "bun eslint",
+    "version": "bun -e \"const fs=require('fs');const v=require('./src/lib/version.json');const date=new Date().toISOString().split('T')[0];console.log('Current version:', v.version);process.argv[2]&&(v.version=process.argv[2],v.buildDate=date,fs.writeFileSync('./src/lib/version.json', JSON.stringify(v, null, 2)),console.log('Updated to:', v.version));\"",
+    "version:patch": "bun run version patch",
+    "version:minor": "bun run version minor",
+    "version:major": "bun run version major"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",
