@@ -18,16 +18,32 @@ export async function addDataCopas(sort_id: string, items: string[]): Promise<vo
     // Keep only the newest 3 items
     const limitedItems = items.slice(0, 3)
 
-    // First, ensure the session exists
-    await supabase
+    // Check if session exists first
+    const { data: existingSession } = await supabase
       .from('clipboard_sessions')
-      .upsert({
-        sort_id,
-        item_count: limitedItems.length,
-        last_accessed: new Date().toISOString()
-      }, {
-        onConflict: 'sort_id'
-      })
+      .select('sort_id')
+      .eq('sort_id', sort_id)
+      .single()
+
+    if (existingSession) {
+      // Update existing session
+      await supabase
+        .from('clipboard_sessions')
+        .update({
+          item_count: limitedItems.length,
+          last_accessed: new Date().toISOString()
+        })
+        .eq('sort_id', sort_id)
+    } else {
+      // Insert new session
+      await supabase
+        .from('clipboard_sessions')
+        .insert({
+          sort_id,
+          item_count: limitedItems.length,
+          last_accessed: new Date().toISOString()
+        })
+    }
 
     // Delete existing items for this sort_id
     await supabase
@@ -163,23 +179,26 @@ export async function removeSortId(sort_id: string): Promise<void> {
 
 export async function generateNextIdFromSupabase(): Promise<string> {
   try {
-    // Get the maximum numeric value from existing sort_ids
+    // Get all existing sort_ids to find the true maximum
     const { data: existingSessions, error } = await supabase
       .from('clipboard_sessions')
       .select('sort_id')
-      .order('sort_id', { ascending: false })
-      .limit(1)
 
     if (error) {
-      console.error('Error fetching max ID:', error)
+      console.error('Error fetching IDs:', error)
       // Fallback to local generation if Supabase fails
       return '1'
     }
 
     let maxCounter = 0
     if (existingSessions && existingSessions.length > 0) {
-      const maxId = existingSessions[0].sort_id
-      maxCounter = parseInt(maxId, 36) || 0
+      // Find the maximum by converting all IDs to numbers
+      for (const session of existingSessions) {
+        const numValue = parseInt(session.sort_id, 36) || 0
+        if (numValue > maxCounter) {
+          maxCounter = numValue
+        }
+      }
     }
 
     const nextCounter = maxCounter + 1
