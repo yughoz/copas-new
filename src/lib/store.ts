@@ -7,6 +7,12 @@ export interface CopasData {
   [sort_id: string]: string[]
 }
 
+export interface SessionInfo {
+  sort_id: string
+  password: string | null
+  item_count: number
+}
+
 export async function addDataCopas(sort_id: string, items: string[]): Promise<void> {
   try {
     // Keep only the newest 3 items
@@ -90,6 +96,48 @@ export async function fetchCopas(sort_id: string): Promise<string[] | undefined>
   } catch (error) {
     console.error('Failed to fetch data from Supabase:', error)
     return undefined
+  }
+}
+
+export async function fetchSessionInfo(sort_id: string): Promise<SessionInfo | null> {
+  try {
+    const { data, error } = await supabase
+      .from('clipboard_sessions')
+      .select('*')
+      .eq('sort_id', sort_id)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
+      }
+      console.error('Error fetching session:', error)
+      throw error
+    }
+
+    return {
+      sort_id: data.sort_id,
+      password: data.password || null,
+      item_count: data.item_count || 0
+    } as SessionInfo
+  } catch (error) {
+    console.error('Failed to fetch session info:', error)
+    return null
+  }
+}
+
+export async function setPassword(sort_id: string, password: string | null): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('clipboard_sessions')
+      .update({ password })
+      .eq('sort_id', sort_id)
+
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.error('Failed to set password:', error)
+    return false
   }
 }
 

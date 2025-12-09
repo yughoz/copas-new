@@ -204,11 +204,10 @@ export default function Home() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
-              toast.type === 'success'
+            className={`px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${toast.type === 'success'
                 ? 'bg-green-500 text-white'
                 : 'bg-red-500 text-white'
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{toast.message}</span>
@@ -239,14 +238,14 @@ export default function Home() {
               <code className="text-lg font-bold text-blue-600 dark:text-blue-400 font-mono">
                 {sortId}
               </code>
-              <button
+              {/* <button
                 onClick={createNewId}
                 className="p-1 hover:bg-blue-200 dark:hover:bg-blue-800/50 rounded-md transition-colors"
                 aria-label="Create new ID"
                 title="Create new session"
               >
                 <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              </button>
+              </button> */}
             </div>
           )}
         </div>
