@@ -6,7 +6,8 @@
       "Bash(xargs kill:*)",
       "Bash(rm:*)",
       "Bash(npm run build:*)",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(docker run:*)"
     ],
     "deny": [],
     "ask": []
