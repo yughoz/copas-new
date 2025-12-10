@@ -49,20 +49,15 @@ export default function Home() {
       }
     }
 
-    // Generate next auto-increment ID from Supabase
+    // Generate next auto-increment ID from Supabase (always fresh for home page)
     const initializeId = async () => {
       try {
         const newId = await generateNextIdFromSupabase()
         setSortId(newId)
+        setArrCopy([]) // Always start fresh on home page
 
         if (typeof window !== 'undefined') {
           setShareUrl(`${window.location.origin}/${newId}`)
-
-          // Load existing data if any
-          const data = await fetchCopas(newId)
-          if (data) {
-            setArrCopy(data)
-          }
         }
       } catch (error) {
         console.error('Failed to initialize ID:', error)
@@ -204,11 +199,10 @@ export default function Home() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
-              toast.type === 'success'
-                ? 'bg-green-500 text-white'
-                : 'bg-red-500 text-white'
-            }`}
+            className={`px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${toast.type === 'success'
+              ? 'bg-green-500 text-white'
+              : 'bg-red-500 text-white'
+              }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{toast.message}</span>
@@ -239,14 +233,14 @@ export default function Home() {
               <code className="text-lg font-bold text-blue-600 dark:text-blue-400 font-mono">
                 {sortId}
               </code>
-              <button
+              {/* <button
                 onClick={createNewId}
                 className="p-1 hover:bg-blue-200 dark:hover:bg-blue-800/50 rounded-md transition-colors"
                 aria-label="Create new ID"
                 title="Create new session"
               >
                 <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              </button>
+              </button> */}
             </div>
           )}
         </div>
