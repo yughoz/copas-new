@@ -1,6 +1,7 @@
 // Data store functions for Copas app
 // Uses Supabase for persistence with auto-incrementing alphanumeric IDs
 
+import { log } from 'console'
 import { supabase } from './supabase'
 
 export interface CopasData {
@@ -18,14 +19,14 @@ export async function addDataCopas(sort_id: string, items: string[]): Promise<vo
     // Keep only the newest 3 items
     const limitedItems = items.slice(0, 3)
 
-    // Check if session exists first
-    const { data: existingSession } = await supabase
+    // Check if session exists first (use limit(1) to handle duplicates)
+    const { data: existingSessions } = await supabase
       .from('clipboard_sessions')
       .select('sort_id')
       .eq('sort_id', sort_id)
-      .single()
+      .limit(1)
 
-    if (existingSession) {
+    if (existingSessions && existingSessions.length > 0) {
       // Update existing session
       await supabase
         .from('clipboard_sessions')
@@ -121,20 +122,22 @@ export async function fetchSessionInfo(sort_id: string): Promise<SessionInfo | n
       .from('clipboard_sessions')
       .select('*')
       .eq('sort_id', sort_id)
-      .single()
+      .limit(1)
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return null
-      }
       console.error('Error fetching session:', error)
-      throw error
+      return null
     }
 
+    if (!data || data.length === 0) {
+      return null
+    }
+
+    const session = data[0]
     return {
-      sort_id: data.sort_id,
-      password: data.password || null,
-      item_count: data.item_count || 0
+      sort_id: session.sort_id,
+      password: session.password || null,
+      item_count: session.item_count || 0
     } as SessionInfo
   } catch (error) {
     console.error('Failed to fetch session info:', error)
@@ -178,51 +181,156 @@ export async function removeSortId(sort_id: string): Promise<void> {
 }
 
 export async function generateNextIdFromSupabase(): Promise<string> {
+  const handleCollision = async (baseId: string): Promise<string> => {
+    // Strategy: Random ++ Count (clipboard_sessions)
+
+    const { count: itemsCount } = await supabase
+      .from('clipboard_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('sort_id', baseId)
+
+    if (itemsCount === 0) {
+      console.log('Found empty session:', baseId);
+
+      // It's empty, so we can reuse it!
+      // Just update the last_accessed to claim it
+      await supabase
+        .from('clipboard_sessions')
+        .update({ last_accessed: new Date().toISOString() })
+        .eq('sort_id', baseId)
+
+      return baseId
+    }
+
+    // 1. Get exact count of existing sessions
+    console.log('Checking for collisions...')
+
+    const { count } = await supabase
+      .from('clipboard_sessions')
+      .select('*', { count: 'exact', head: true })
+
+    // 2. Add random buffer to count to jump ahead
+    const currentCount = count || 0
+    const randomBuffer = Math.floor(Math.random() * 9999) + 1
+    const nextNumeric = currentCount + randomBuffer
+    const nextId = nextNumeric.toString(36)
+
+    console.log('Next ID:', nextId);
+
+    // 3. Try insert
+    const { error } = await supabase
+      .from('clipboard_sessions')
+      .insert({
+        sort_id: nextId,
+        item_count: 0,
+        last_accessed: new Date().toISOString()
+      })
+
+    if (!error) return nextId
+
+    // If still collision, recurse
+    if (error.code === '23505') {
+      // Check if the colliding ID has any items
+
+      console.log('Found non-empty session:', nextId);
+
+      // If not empty, try again with larger buffer
+      const largerBuffer = Math.floor(Math.random() * 10000) + 1000
+      const fallbackId = (currentCount + largerBuffer).toString(36)
+
+      await supabase.from('clipboard_sessions').insert({
+        sort_id: fallbackId,
+        item_count: 0,
+        last_accessed: new Date().toISOString()
+      })
+      return fallbackId
+    }
+
+    throw error
+  }
+
   try {
-    // Get all existing sort_ids to find the true maximum
+    // 1. Try to get next ID from atomic counter via RPC
+    const { data: nextValue, error: rpcError } = await supabase
+      .rpc('increment_id_counter')
+
+    if (!rpcError && typeof nextValue === 'number') {
+      const newId = nextValue.toString(36)
+
+      const { error: insertError } = await supabase
+        .from('clipboard_sessions')
+        .insert({
+          sort_id: newId,
+          item_count: 0,
+          last_accessed: new Date().toISOString()
+        })
+
+      if (!insertError) {
+        return newId
+      }
+
+      // Handle Collision for RPC path
+      if (insertError.code === '23505') {
+        console.warn(`Collision on RPC ID ${newId}, switching to Random+Count strategy`)
+        return await handleCollision(newId)
+      }
+    } else {
+      console.warn('RPC increment_id_counter failed or not found, falling back to manual calculation:', rpcError)
+    }
+
+    // 2. Fallback: Old method (find max existing ID)
+    // Only runs if RPC fails
     const { data: existingSessions, error } = await supabase
       .from('clipboard_sessions')
       .select('sort_id')
 
     if (error) {
       console.error('Error fetching IDs:', error)
-      // Fallback to local generation if Supabase fails
       return '1'
     }
 
     let maxCounter = 0
     if (existingSessions && existingSessions.length > 0) {
-      // Find the maximum by converting all IDs to numbers
       for (const session of existingSessions) {
-        const numValue = parseInt(session.sort_id, 36) || 0
-        if (numValue > maxCounter) {
-          maxCounter = numValue
+        const sortId = session.sort_id
+        const numValue = parseInt(sortId, 36)
+        if (!isNaN(numValue) && numValue.toString(36) === sortId) {
+          if (numValue > maxCounter) {
+            maxCounter = numValue
+          }
         }
       }
     }
 
-    const nextCounter = maxCounter + 1
-    const newId = nextCounter.toString(36) // Convert to base36
+    // Try incrementing from max
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const nextCounter = maxCounter + 1 + attempt
+      const newId = nextCounter.toString(36)
 
-    // Try to create a new session with this ID to ensure uniqueness
-    const { error: insertError } = await supabase
-      .from('clipboard_sessions')
-      .insert({
-        sort_id: newId,
-        item_count: 0,
-        last_accessed: new Date().toISOString()
-      })
+      const { error: insertError } = await supabase
+        .from('clipboard_sessions')
+        .insert({
+          sort_id: newId,
+          item_count: 0,
+          last_accessed: new Date().toISOString()
+        })
 
-    if (insertError) {
-      // If insertion fails, try with the next ID
-      console.warn('ID collision detected, trying next ID:', insertError)
-      return generateNextIdFromSupabase() // Recursive call with next ID
+      if (!insertError) {
+        return newId
+      }
+
+      if (insertError.code === '23505') {
+        // Switch to Count+Random immediately on collision
+        console.warn(`Collision on fallback ID ${newId}, switching to Random+Count strategy`)
+        return await handleCollision(newId)
+      }
     }
 
-    return newId
+    // Last resort
+    return await handleCollision('fallback')
+
   } catch (error) {
     console.error('Failed to generate ID from Supabase:', error)
-    // Fallback to local generation
-    return '1'
+    return Math.random().toString(36).substring(2, 6)
   }
 }

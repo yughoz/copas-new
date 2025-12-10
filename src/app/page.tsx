@@ -49,20 +49,15 @@ export default function Home() {
       }
     }
 
-    // Generate next auto-increment ID from Supabase
+    // Generate next auto-increment ID from Supabase (always fresh for home page)
     const initializeId = async () => {
       try {
         const newId = await generateNextIdFromSupabase()
         setSortId(newId)
+        setArrCopy([]) // Always start fresh on home page
 
         if (typeof window !== 'undefined') {
           setShareUrl(`${window.location.origin}/${newId}`)
-
-          // Load existing data if any
-          const data = await fetchCopas(newId)
-          if (data) {
-            setArrCopy(data)
-          }
         }
       } catch (error) {
         console.error('Failed to initialize ID:', error)
@@ -205,8 +200,8 @@ export default function Home() {
           <div
             key={toast.id}
             className={`px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${toast.type === 'success'
-                ? 'bg-green-500 text-white'
-                : 'bg-red-500 text-white'
+              ? 'bg-green-500 text-white'
+              : 'bg-red-500 text-white'
               }`}
           >
             <div className="flex items-center justify-between">
