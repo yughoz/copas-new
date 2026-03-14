@@ -1,7 +1,7 @@
 // Data store functions for Copas app
-// Uses Supabase for persistence with auto-incrementing alphanumeric IDs
+// Uses PocketBase for persistence with auto-incrementing alphanumeric IDs
 
-import { supabase } from './supabase'
+import { pb } from './pocketbase'
 
 export interface CopasData {
   [sort_id: string]: string[]
@@ -12,49 +12,49 @@ export async function addDataCopas(sort_id: string, items: string[]): Promise<vo
     // Keep only the newest 3 items
     const limitedItems = items.slice(0, 3)
 
-    // First, ensure the session exists
-    await supabase
-      .from('clipboard_sessions')
-      .upsert({
+    // First, ensure the session exists (upsert)
+    try {
+      await pb.collection('clipboard_sessions').create({
         sort_id,
         item_count: limitedItems.length,
         last_accessed: new Date().toISOString()
-      }, {
-        onConflict: 'sort_id'
       })
+    } catch (err: any) {
+      // If already exists, update it
+      if (err.status === 400) {
+        const existing = await pb.collection('clipboard_sessions')
+          .getFirstListItem(`sort_id="${sort_id}"`)
+        
+        await pb.collection('clipboard_sessions').update(existing.id, {
+          item_count: limitedItems.length,
+          last_accessed: new Date().toISOString()
+        })
+      } else {
+        throw err
+      }
+    }
 
     // Delete existing items for this sort_id
-    await supabase
-      .from('clipboard_items')
-      .delete()
-      .eq('sort_id', sort_id)
+    const existingItems = await pb.collection('clipboard_items')
+      .getFullList({ filter: `sort_id="${sort_id}"` })
+    
+    for (const item of existingItems) {
+      await pb.collection('clipboard_items').delete(item.id)
+    }
 
     // Insert new items
     if (limitedItems.length > 0) {
-      const itemsToInsert = limitedItems.map((content, index) => ({
-        sort_id,
-        content,
-        position: index
-      }))
-
-      const { error } = await supabase
-        .from('clipboard_items')
-        .insert(itemsToInsert)
-
-      if (error) throw error
+      for (let index = 0; index < limitedItems.length; index++) {
+        await pb.collection('clipboard_items').create({
+          sort_id,
+          content: limitedItems[index],
+          position: index
+        })
+      }
     }
 
-    // Update session item count
-    await supabase
-      .from('clipboard_sessions')
-      .update({
-        item_count: limitedItems.length,
-        last_accessed: new Date().toISOString()
-      })
-      .eq('sort_id', sort_id)
-
   } catch (error) {
-    console.error('Failed to save data to Supabase:', error)
+    console.error('Failed to save data to PocketBase:', error)
     throw error
   }
 }
@@ -62,33 +62,31 @@ export async function addDataCopas(sort_id: string, items: string[]): Promise<vo
 export async function fetchCopas(sort_id: string): Promise<string[] | undefined> {
   try {
     // Update last_accessed timestamp
-    await supabase
-      .from('clipboard_sessions')
-      .update({ last_accessed: new Date().toISOString() })
-      .eq('sort_id', sort_id)
-
-    // Fetch items sorted by position
-    const { data, error } = await supabase
-      .from('clipboard_items')
-      .select('content, position')
-      .eq('sort_id', sort_id)
-      .order('position', { ascending: true })
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // No data found
-        return undefined
-      }
-      throw error
+    try {
+      const session = await pb.collection('clipboard_sessions')
+        .getFirstListItem(`sort_id="${sort_id}"`)
+      
+      await pb.collection('clipboard_sessions').update(session.id, {
+        last_accessed: new Date().toISOString()
+      })
+    } catch (err) {
+      // Session doesn't exist yet, ignore
     }
 
-    if (!data || data.length === 0) {
+    // Fetch items sorted by position
+    const items = await pb.collection('clipboard_items')
+      .getFullList({
+        filter: `sort_id="${sort_id}"`,
+        sort: 'position'
+      })
+
+    if (!items || items.length === 0) {
       return undefined
     }
 
-    return data.map(item => item.content)
+    return items.map((item: any) => item.content)
   } catch (error) {
-    console.error('Failed to fetch data from Supabase:', error)
+    console.error('Failed to fetch data from PocketBase:', error)
     return undefined
   }
 }
@@ -96,41 +94,41 @@ export async function fetchCopas(sort_id: string): Promise<string[] | undefined>
 export async function removeSortId(sort_id: string): Promise<void> {
   try {
     // Delete all items for this sort_id
-    await supabase
-      .from('clipboard_items')
-      .delete()
-      .eq('sort_id', sort_id)
+    const items = await pb.collection('clipboard_items')
+      .getFullList({ filter: `sort_id="${sort_id}"` })
+    
+    for (const item of items) {
+      await pb.collection('clipboard_items').delete(item.id)
+    }
 
     // Delete the session
-    await supabase
-      .from('clipboard_sessions')
-      .delete()
-      .eq('sort_id', sort_id)
+    try {
+      const session = await pb.collection('clipboard_sessions')
+        .getFirstListItem(`sort_id="${sort_id}"`)
+      
+      await pb.collection('clipboard_sessions').delete(session.id)
+    } catch (err) {
+      // Session doesn't exist, ignore
+    }
 
   } catch (error) {
-    console.error('Failed to remove sort_id from Supabase:', error)
+    console.error('Failed to remove sort_id from PocketBase:', error)
     throw error
   }
 }
 
-export async function generateNextIdFromSupabase(): Promise<string> {
+export async function generateNextIdFromPocketBase(): Promise<string> {
   try {
-    // Get the maximum numeric value from existing sort_ids
-    const { data: existingSessions, error } = await supabase
-      .from('clipboard_sessions')
-      .select('sort_id')
-      .order('sort_id', { ascending: false })
-      .limit(1)
-
-    if (error) {
-      console.error('Error fetching max ID:', error)
-      // Fallback to local generation if Supabase fails
-      return '1'
-    }
+    // Get all existing sessions sorted by sort_id descending
+    const sessions = await pb.collection('clipboard_sessions')
+      .getFullList({
+        sort: '-sort_id',
+        limit: 1
+      })
 
     let maxCounter = 0
-    if (existingSessions && existingSessions.length > 0) {
-      const maxId = existingSessions[0].sort_id
+    if (sessions && sessions.length > 0) {
+      const maxId = (sessions[0] as any).sort_id
       maxCounter = parseInt(maxId, 36) || 0
     }
 
@@ -138,24 +136,24 @@ export async function generateNextIdFromSupabase(): Promise<string> {
     const newId = nextCounter.toString(36) // Convert to base36
 
     // Try to create a new session with this ID to ensure uniqueness
-    const { error: insertError } = await supabase
-      .from('clipboard_sessions')
-      .insert({
+    try {
+      await pb.collection('clipboard_sessions').create({
         sort_id: newId,
         item_count: 0,
         last_accessed: new Date().toISOString()
       })
-
-    if (insertError) {
-      // If insertion fails, try with the next ID
-      console.warn('ID collision detected, trying next ID:', insertError)
-      return generateNextIdFromSupabase() // Recursive call with next ID
+      return newId
+    } catch (err: any) {
+      // If insertion fails (ID collision), try with the next ID
+      console.warn('ID collision detected, trying next ID:', err)
+      return generateNextIdFromPocketBase() // Recursive call with next ID
     }
-
-    return newId
   } catch (error) {
-    console.error('Failed to generate ID from Supabase:', error)
+    console.error('Failed to generate ID from PocketBase:', error)
     // Fallback to local generation
     return '1'
   }
 }
+
+// Legacy compatibility - keep same function names
+export const generateNextIdFromSupabase = generateNextIdFromPocketBase
