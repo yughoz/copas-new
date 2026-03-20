@@ -1,0 +1,4 @@
+open http://localhost:3010/ 
+fill form with lorem ipsum bla bla bla and 
+click Buttin Add to Cliipboard
+
