@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Copy, Plus, Trash2, Moon, Sun, RefreshCw } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { addDataCopas, fetchCopas, generateNextIdFromSupabase } from '@/lib/store'
+import { addDataCopas, fetchCopas, generateNextIdFromPocketBase } from '@/lib/store'
 import { createToast, copyToClipboard, validateInput, pasteFromClipboard, isClipboardAvailable } from '@/lib/utils'
 import { getVersion } from '@/lib/version'
 
@@ -52,7 +52,7 @@ export default function Home() {
     // Generate next auto-increment ID from Supabase
     const initializeId = async () => {
       try {
-        const newId = await generateNextIdFromSupabase()
+        const newId = await generateNextIdFromPocketBase()
         setSortId(newId)
 
         if (typeof window !== 'undefined') {
@@ -167,7 +167,7 @@ export default function Home() {
 
   const createNewId = async () => {
     try {
-      const newId = await generateNextIdFromSupabase()
+      const newId = await generateNextIdFromPocketBase()
       setSortId(newId)
       setArrCopy([]) // Clear existing data
       setText('') // Clear input
